@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>بازی ماشین - نسخه وب</title>
+    <link href="https://cdn.jsdelivr.net/gh/rastikerdar/vazirmatn@v33.003/Vazirmatn-font-face.css" rel="stylesheet" type="text/css" />
+    <style>
+        body {
+            margin: 0; padding: 0; background-color: #111;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
+            font-family: 'Vazirmatn', Tahoma, sans-serif;
+        }
+        canvas { display: block; background-color: #222; box-shadow: 0 0 20px rgba(0,0,0,0.8); }
+        
+        /* استایل صفحه‌های overlay */
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(10, 10, 20, 0.92); display: none;
+            flex-direction: column; justify-content: center; align-items: center;
+            color: white; z-index: 10; backdrop-filter: blur(5px);
+        }
+        .overlay h1 { font-size: 60px; margin-bottom: 20px; text-shadow: 0 0 10px currentColor; }
+        .overlay h2 { color: #00e5ff; margin-bottom: 15px; }
+        
+        .input-group { margin-bottom: 20px; text-align: center; }
+        .input-group label { display: block; margin-bottom: 8px; color: #aaa; font-size: 14px; }
+        input[type="text"] { 
+            padding: 12px 20px; font-size: 18px; text-align: center; 
+            border-radius: 8px; border: 2px solid #444; background: #222; 
+            color: white; font-family: inherit; outline: none; transition: border 0.3s;
+        }
+        input[type="text"]:focus { border-color: #00e5ff; }
+        
+        button {
+            padding: 14px 50px; font-size: 20px; font-weight: bold;
+            color: #111; background-color: #00e5ff; border: none;
+            border-radius: 12px; cursor: pointer; font-family: inherit;
+            transition: transform 0.2s, background 0.2s; box-shadow: 0 4px 15px rgba(0, 229, 255, 0.3);
+        }
+        button:hover { background-color: #00b8d4; transform: scale(1.05); }
+        button:active { transform: scale(0.98); }
+        
+        /* استایل جدول رکوردها */
+        table { width: 100%; max-width: 500px; border-collapse: collapse; margin-top: 10px; font-size: 18px; }
+        th, td { padding: 12px 20px; text-align: center; border-bottom: 1px solid #333; }
+        th { color: #00e5ff; font-weight: normal; font-size: 14px; }
+        tr:nth-child(1) td { color: #ffd700; font-weight: bold; font-size: 22px; } /* رتبه اول */
+        
+        /* HUD بازی */
+        #hud {
+            position: absolute; top: 20px; right: 20px;
+            color: white; text-align: right; direction: rtl;
+            font-size: 20px; font-weight: bold; line-height: 1.6;
+            text-shadow: 2px 2px 4px black; pointer-events: none;
+        }
+        .hud-item { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+        .hud-label { color: #aaa; font-size: 16px; }
+        .hud-value { color: #00e5ff; font-size: 24px; }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- HUD (بالای صفحه) -->
+<div id="hud">
+    <div class="hud-item"><span class="hud-label">امتیاز:</span><span class="hud-value" id="scoreDisplay">0</span></div>
+    <div class="hud-item"><span class="hud-label">مرحله:</span><span class="hud-value" id="levelDisplay">1</span></div>
+    <div class="hud-item"><span class="hud-label">تیر:</span><span class="hud-value" id="ammoDisplay">25</span></div>
+    <div class="hud-item"><span class="hud-label">جان:</span><span class="hud-value" id="hpDisplay" style="color: #ff5252;">10</span></div>
+    <div class="hud-item" id="bossHud" style="display:none;"><span class="hud-label">جان دزد:</span><span class="hud-value" style="color: #ff4081;" id="bossHpDisplay">10</span></div>
+</div>
+
+<!-- صفحه شروع / تصادف -->
+<div id="startScreen" class="overlay" style="display: flex;">
+    <h1 style="color: #00e5ff;">آماده‌ای؟</h1>
+    <p style="color: #aaa; margin-bottom: 30px;">برای شروع و فعال‌سازی صدا کلیک کن</p>
+    <button id="startBtn">شروع بازی</button>
+</div>
+
+<div id="crashScreen" class="overlay">
+    <h1 style="color: #ff5252;">تصادف کردی!</h1>
+    <button id="tryAgainBtn">تلاش مجدد</button>
+</div>
+
+<!-- صفحه پایان بازی و ثبت رکورد -->
+<div id="gameOverScreen" class="overlay">
+    <h1 style="color: #ff5252;">بازی تمام شد</h1>
+    <div id="nameInputSection">
+        <div class="input-group">
+            <label>اسمت را وارد کن:</label>
+            <input type="text" id="playerName" placeholder="مثلاً علی" maxlength="12">
+        </div>
+        <button id="saveScoreBtn">ثبت رکورد</button>
+    </div>
+    <div id="leaderboardSection" style="display: none; text-align: center; width: 80%;">
+        <h2>🏆 ۳ رکورد برتر</h2>
+        <table>
+            <thead><tr><th>رتبه</th><th>نام</th><th>امتیاز</th><th>مرحله</th></tr></thead>
+            <tbody id="recordsBody"></tbody>
+        </table>
+        <br>
+        <button id="playAgainBtn" style="margin-top: 20px;">بازی مجدد</button>
+    </div>
+</div>
+
+<script>
+// --- ۱. تنظیمات اولیه ---
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// --- ۲. سیستم صدا (Web Audio API) ---
+let audioCtx = null;
+const soundBuffers = {};
+let engineSource = null;
+let bgMusicSource = null;
+let bgMusic2Source = null;
+
+function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // اگر در حالت تعلیق بود، فعالش کن (برای مرورگرهایی که سخت‌گیرند)
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+async function loadSoundBuffer(name, url) {
+    try {
+        const response = await fetch(url);
+        const arrayBuffer = await response.arrayBuffer();
+        return await new Promise((resolve, reject) => {
+            audioCtx.decodeAudioData(arrayBuffer, resolve, reject);
+        });
+    } catch (e) { console.warn(`صدا لود نشد: ${url}`, e); return null; }
+}
+
+function playSound(name, volume = 1.0, loop = false) {
+    if (!audioCtx || !soundBuffers[name]) return null;
+    const source = audioCtx.createBufferSource();
+    source.buffer = soundBuffers[name];
+    source.loop = loop;
+    const gainNode = audioCtx.createGain();
+    gainNode.gain.value = volume;
+    source.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
+    source.start(0);
+    return { source, gainNode };
+}
+
+// --- ۳. بارگذاری دارایی‌ها ---
+const images = {};
+let assetsLoaded = false;
+
+function loadImage(name, src) {
+    return new Promise((resolve) => {
+        const img = new Image();
+        img.src = src;
+        img.onload = () => { images[name] = img; resolve(); };
+        img.onerror = () => { console.warn(`عکس پیدا نشد: ${src}`); resolve(); };
+    });
+}
+
+async function preloadAssets() {
+    await Promise.all([
+        loadImage('side_l', 'side_l.jpg'), loadImage('side_r', 'side_r.jpg'),
+        loadImage('road_l', 'road_l.jpg'), loadImage('road_r', 'road_r.jpg'),
+        loadImage('car', 'car.png'), loadImage('star', 'star.png'),
+        loadImage('car1', 'car1.png'), loadImage('car2', 'car2.png'), loadImage('car3', 'car3.png'),
+        loadImage('truk1', 'truk1.png'), loadImage('truk2', 'truk2.png'), loadImage('truk3', 'truk3.png'),
+        loadImage('criminal', 'Criminal.png')
+    ]);
+    
+    initAudio();
+    const soundFiles = [
+        { name: 'bg_music', url: 'bg_music.mp3' }, { name: 'bg_music2', url: 'bg_music2.mp3' },
+        { name: 'engine', url: 'engine.wav' }, { name: 'overtake', url: 'overtake.wav' },
+        { name: 'explosion', url: 'explosion.wav' }, { name: 'crash', url: 'crash.wav' },
+        { name: 'shoot', url: 'shoot.wav' }
+    ];
+    for (const sf of soundFiles) {
+        const buffer = await loadSoundBuffer(sf.name, sf.url);
+        if (buffer) soundBuffers[sf.name] = buffer;
+    }
+    
+    assetsLoaded = true;
+    initGame();
+    requestAnimationFrame(gameLoop);
+}
+
+// --- ۴. شروع صدا پس از کلیک کاربر ---
+function startAudio() {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    if (soundBuffers.bg_music) bgMusicSource = playSound('bg_music', 0.3, true);
+    if (soundBuffers.engine) engineSource = playSound('engine', 0.15, true);
+}
+document.getElementById('startBtn').addEventListener('click', () => {
+    startAudio();
+    document.getElementById('startScreen').style.display = 'none';
+});
+
+// --- ۵. متغیرهای بازی ---
+let gameWidth, gameHeight, roadWidth, x_side_l, x_road_l, x_road_r, x_side_r;
+let car = { x: 0, y: 0, w: 84, h: 88, targetX: 0, speed: 7 };
+let player = { health: 10, ammo: 25, score: 0, level: 1, starsCollected: 0 };
+let stars = [], enemies = [], bullets = [], enemyBullets = [];
+let particles = [], hitParticles = [];
+let gameState = 'playing';
+let criminal = { active: false, health: 10, x: 0, y: -180, w: 95, h: 128, timer: 0, dir: 1, spawnTimer: 0 };
+let scrollSpeed = 5, enemySpeed = 3, starSpeed = 5;
+let shootCooldown = 0;
+let bgScrollOffset = 0;
+
+// بافر جاده برای بهینه‌سازی
+let roadBuffer = null, roadBufferCtx = null;
+
+function createRoadBuffer() {
+    roadBuffer = document.createElement('canvas');
+    roadBuffer.width = gameWidth;
+    roadBuffer.height = gameHeight * 2;
+    roadBufferCtx = roadBuffer.getContext('2d');
+    drawRoadToBuffer();
+}
+
+function drawRoadToBuffer() {
+    roadBufferCtx.clearRect(0, 0, roadBuffer.width, roadBuffer.height);
+    const mult = 1.3;
+    for (let i = 0; i < 2; i++) {
+        let offsetY = i * gameHeight;
+        roadBufferCtx.drawImage(images.side_l, x_side_l, offsetY, images.side_l.width*mult, gameHeight + 2);
+        roadBufferCtx.drawImage(images.road_l, x_road_l, offsetY, images.road_l.width*mult, gameHeight + 2);
+        roadBufferCtx.drawImage(images.road_r, x_road_r, offsetY, images.road_r.width*mult, gameHeight + 2);
+        roadBufferCtx.drawImage(images.side_r, x_side_r, offsetY, images.side_r.width*mult, gameHeight + 2);
+    }
+}
+
+function setupDimensions() {
+    if (!images.side_l) return;
+    const mult = 1.3;
+    const sl_w = images.side_l.width * mult, sr_w = images.side_r.width * mult;
+    const rl_w = images.road_l.width * mult, rr_w = images.road_r.width * mult;
+    roadWidth = sl_w + rl_w + rr_w + sr_w;
+    gameWidth = canvas.width; gameHeight = canvas.height;
+    x_side_l = (gameWidth - roadWidth) / 2;
+    x_road_l = x_side_l + sl_w; x_road_r = x_road_l + rl_w; x_side_r = x_road_r + rr_w;
+    car.w = 84; car.h = 88;
+    car.targetX = x_road_l + rl_w/2 - car.w/2;
+    car.x = car.targetX; car.y = gameHeight - 160;
+}
+
+function resizeCanvas() {
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    setupDimensions(); createRoadBuffer();
+}
+
+function initGame() {
+    setupDimensions(); createRoadBuffer();
+    player = { health: 10, ammo: 25, score: 0, level: 1, starsCollected: 0 };
+    criminal = { active: false, health: 10, x: 0, y: -180, w: 95, h: 128, timer: 0, dir: 1, spawnTimer: 0 };
+    bullets = []; enemyBullets = []; enemies = []; particles = []; hitParticles = [];
+    gameState = 'playing'; scrollSpeed = 5; enemySpeed = 3; starSpeed = 5; bgScrollOffset = 0;
+    stars = [];
+    for(let i=0; i<3; i++) {
+        stars.push({ x: x_road_l + (Math.random() > 0.5 ? images.road_l.width*0.65 - 35 : images.road_l.width*1.3 + images.road_r.width*0.35 - 35), y: -100 - (i*300), w: 35, h: 35 });
+    }
+    document.getElementById('gameOverScreen').style.display = 'none';
+    document.getElementById('crashScreen').style.display = 'none';
+    document.getElementById('nameInputSection').style.display = 'block';
+    document.getElementById('leaderboardSection').style.display = 'none';
+    updateHUD();
+}
+
+function updateHUD() {
+    document.getElementById('scoreDisplay').textContent = player.score;
+    document.getElementById('levelDisplay').textContent = player.level;
+    document.getElementById('ammoDisplay').textContent = player.ammo;
+    document.getElementById('hpDisplay').textContent = player.health;
+    document.getElementById('bossHud').style.display = criminal.active ? 'flex' : 'none';
+    if (criminal.active) document.getElementById('bossHpDisplay').textContent = criminal.health;
+}
+
+function update(deltaTime) {
+    if (gameState !== 'playing') return;
+    const dt = deltaTime / 16.67; // نرمال‌سازی بر اساس 60FPS
+    
+    if (shootCooldown > 0) shootCooldown -= dt;
+    
+    // حرکت ماشین
+    if (car.x < car.targetX) { car.x += car.speed * dt; if(car.x > car.targetX) car.x = car.targetX; }
+    else if (car.x > car.targetX) { car.x -= car.speed * dt; if(car.x < car.targetX) car.x = car.targetX; }
+    
+    // اسکرول جاده
+    bgScrollOffset = (bgScrollOffset + scrollSpeed * dt) % (gameHeight * 2);
+    
+    // ستاره‌ها
+    if (!criminal.active) {
+        for (let s of stars) {
+            s.y += starSpeed * dt;
+            if (checkCollision(car, s)) { player.score += 10; player.starsCollected++; s.y = -Math.random()*600 - 200; s.x = Math.random() > 0.5 ? x_road_l + images.road_l.width*0.65 - 35 : x_road_l + images.road_l.width*1.3 + images.road_r.width*0.35 - 35; }
+            if (s.y > gameHeight) { s.y = -Math.random()*600 - 200; s.x = Math.random() > 0.5 ? x_road_l + images.road_l.width*0.65 - 35 : x_road_l + images.road_l.width*1.3 + images.road_r.width*0.35 - 35; }
+        }
+    }
+    
+    // ماشین دزد
+    criminal.spawnTimer += dt;
+    if (criminal.spawnTimer > 1800 && !criminal.active) {
+        criminal.active = true; criminal.health = 10;
+        criminal.x = Math.random() > 0.5 ? x_road_l + images.road_l.width*0.65 - 47 : x_road_l + images.road_l.width*1.3 + images.road_r.width*0.35 - 47;
+        criminal.y = -180; criminal.spawnTimer = 0; player.ammo = 25; enemies = []; stars = [];
+        if (bgMusicSource) bgMusicSource.gainNode.gain.value = 0;
+        if (soundBuffers.bg_music2) bgMusic2Source = playSound('bg_music2', 0.3, true);
+    }
+    
+    if (criminal.active) {
+        criminal.timer += dt;
+        let changeTime = player.level < 20 ? 40 : 15;
+        let dodgeSpeed = player.level < 20 ? 3 + player.level*0.2 : 6 + (player.level-20)*0.5;
+        if (criminal.timer > changeTime) {
+            if (Math.abs(criminal.x - car.x) < 100) criminal.dir = car.x > criminal.x ? -1 : 1;
+            else criminal.dir = Math.random() > 0.5 ? 1 : -1;
+            criminal.timer = 0;
+        }
+        criminal.x += criminal.dir * dodgeSpeed * dt;
+        if (criminal.x <= x_road_l) { criminal.x = x_road_l; criminal.dir = 1; }
+        if (criminal.x >= x_side_r - criminal.w) { criminal.x = x_side_r - criminal.w; criminal.dir = -1; }
+        if (criminal.y < gameHeight/3) criminal.y += 1.5 * dt;
+        
+        if (checkCollision(car, criminal)) triggerCrash();
+        
+        if (player.level >= 5 && Math.random() < (player.level < 20 ? 0.02 : 0.05) * dt) {
+            enemyBullets.push({ x: criminal.x + criminal.w/2 - 5, y: criminal.y + criminal.h, w: 10, h: 22 });
+        }
+        
+        if (player.ammo <= 0 && bullets.length === 0) {
+            player.score = Math.max(0, player.score - 50);
+            criminal.active = false; criminal.y = -180; criminal.spawnTimer = 0;
+            if (bgMusic2Source) bgMusic2Source.gainNode.gain.value = 0;
+            if (bgMusicSource) bgMusicSource.gainNode.gain.value = 0.3;
+            for(let i=0; i<3; i++) stars.push({x: Math.random() > 0.5 ? x_road_l + images.road_l.width*0.65 - 35 : x_road_l + images.road_l.width*1.3 + images.road_r.width*0.35 - 35, y: -100-(i*300), w:35, h:35});
+        }
+    }
+    
+    // ترافیک
+    if (!criminal.active && Math.random() < 0.03 * dt) {
+        let safe = true;
+        for (let e of enemies) if (e.y < 350) safe = false;
+        if (safe && enemies.length < 3) {
+            const isTruck = Math.random() > 0.5;
+            const name = isTruck ? ['truk1','truk2','truk3'][Math.floor(Math.random()*3)] : ['car1','car2','car3'][Math.floor(Math.random()*3)];
+            const w = isTruck ? 112 : 56, h = isTruck ? 144 : 72;
+            const laneX = Math.random() > 0.5 ? x_road_l + images.road_l.width*0.65 - w/2 : x_road_l + images.road_l.width*1.3 + images.road_r.width*0.35 - w/2;
+            enemies.push({ x: laneX, y: -180, w, h, img: name });
+        }
+    }
+    
+    for (let i = enemies.length - 1; i >= 0; i--) {
+        let e = enemies[i]; e.y += enemySpeed * dt;
+        if (checkCollision(car, e)) { triggerCrash(); enemies.splice(i, 1); continue; }
+        if (e.y > gameHeight) enemies.splice(i, 1);
+    }
+    
+    // تیرها
+    for (let i = bullets.length - 1; i >= 0; i--) {
+        let b = bullets[i]; b.y -= 8 * dt;
+        if (b.y < 0) { bullets.splice(i, 1); continue; }
+        if (criminal.active && checkCollision(b, criminal)) {
+            bullets.splice(i, 1); criminal.health--;
+            for(let k=0; k<5; k++) hitParticles.push({x:b.x, y:b.y, vx:(Math.random()-0.5)*6, vy:(Math.random()-0.5)*6, life:15});
+            if (criminal.health <= 0) {
+                playSound('explosion', 0.8); player.score += 100;
+                for (let k=0; k<40; k++) { let angle = Math.random()*Math.PI*2; let spd = Math.random()*10+2; particles.push({x: criminal.x+criminal.w/2, y: criminal.y+criminal.h/2, vx: Math.cos(angle)*spd, vy: Math.sin(angle)*spd, life: Math.random()*30+20}); }
+                criminal.active = false; criminal.y = -180; criminal.spawnTimer = 0;
+                if (bgMusic2Source) bgMusic2Source.gainNode.gain.value = 0;
+                if (bgMusicSource) bgMusicSource.gainNode.gain.value = 0.3;
+                for(let k=0; k<3; k++) stars.push({x: Math.random() > 0.5 ? x_road_l + images.road_l.width*0.65 - 35 : x_road_l + images.road_l.width*1.3 + images.road_r.width*0.35 - 35, y: -100-(k*300), w:35, h:35});
+            }
+        }
+    }
+    
+    for (let i = enemyBullets.length - 1; i >= 0; i--) {
+        let eb = enemyBullets[i]; eb.y += 8 * dt;
+        if (eb.y > gameHeight) { enemyBullets.splice(i, 1); continue; }
+        if (checkCollision(car, eb)) { enemyBullets.splice(i, 1); player.health--; if (player.health <= 0) triggerGameOver(); }
+    }
+    
+    // ذرات
+    for (let i = particles.length - 1; i >= 0; i--) { particles[i].x += particles[i].vx * dt; particles[i].y += particles[i].vy * dt; particles[i].life--; if (particles[i].life <= 0) particles.splice(i, 1); }
+    for (let i = hitParticles.length - 1; i >= 0; i--) { hitParticles[i].x += hitParticles[i].vx * dt; hitParticles[i].y += hitParticles[i].vy * dt; hitParticles[i].life--; if (hitParticles[i].life <= 0) hitParticles.splice(i, 1); }
+    
+    if (player.starsCollected >= player.level * 10) {
+        player.level++; player.starsCollected = 0;
+        scrollSpeed += 1.0; enemySpeed += 0.5; starSpeed += 0.3;
+    }
+    updateHUD();
+}
+
+function checkCollision(r1, r2) { return r1.x < r2.x + r2.w && r1.x + r1.w > r2.x && r1.y < r2.y + r2.h && r1.y + r1.h > r2.y; }
+
+function triggerCrash() { gameState = 'crash'; playSound('crash', 0.8); document.getElementById('crashScreen').style.display = 'flex'; }
+function triggerGameOver() { gameState = 'gameover'; playSound('crash', 0.8); document.getElementById('gameOverScreen').style.display = 'flex'; }
+
+function draw() {
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // جاده
+    let yOffset = Math.floor(bgScrollOffset);
+    if (yOffset < gameHeight) {
+        ctx.drawImage(roadBuffer, 0, yOffset, gameWidth, gameHeight, 0, 0, gameWidth, gameHeight);
+        ctx.drawImage(roadBuffer, 0, yOffset - gameHeight*2, gameWidth, gameHeight, 0, 0, gameWidth, gameHeight);
+    } else {
+        ctx.drawImage(roadBuffer, 0, yOffset, gameWidth, gameHeight, 0, 0, gameWidth, gameHeight);
+        ctx.drawImage(roadBuffer, 0, yOffset - gameHeight*2, gameWidth, gameHeight, 0, 0, gameWidth, gameHeight);
+    }
+    
+    // اشیا
+    for (let s of stars) if (images.star) ctx.drawImage(images.star, s.x, s.y, s.w, s.h);
+    for (let e of enemies) if (images[e.img]) ctx.drawImage(images[e.img], e.x, e.y, e.w, e.h);
+    if (criminal.active && images.criminal) ctx.drawImage(images.criminal, criminal.x, criminal.y, criminal.w, criminal.h);
+    if (images.car) ctx.drawImage(images.car, car.x, car.y, car.w, car.h);
+    
+    // تیرها
+    ctx.fillStyle = 'cyan'; for (let b of bullets) ctx.fillRect(b.x, b.y, b.w, b.h);
+    ctx.fillStyle = 'red'; for (let eb of enemyBullets) ctx.fillRect(eb.x, eb.y, eb.w, eb.h);
+    
+    // ذرات
+    for (let p of particles) { ctx.fillStyle = 'orange'; ctx.beginPath(); ctx.arc(p.x, p.y, p.life/2, 0, Math.PI*2); ctx.fill(); }
+    for (let p of hitParticles) { ctx.fillStyle = 'yellow'; ctx.beginPath(); ctx.arc(p.x, p.y, p.life/3, 0, Math.PI*2); ctx.fill(); }
+}
+
+let lastTime = 0;
+function gameLoop(timestamp) {
+    if (!lastTime) lastTime = timestamp;
+    let deltaTime = timestamp - lastTime;
+    if (deltaTime > 50) deltaTime = 50; // جلوگیری از پرش در هنگام لگ
+    if (assetsLoaded && gameState === 'playing') update(deltaTime);
+    draw();
+    lastTime = timestamp;
+    requestAnimationFrame(gameLoop);
+}
+
+// --- ورودی‌ها ---
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && gameState === 'playing' && criminal.active && shootCooldown <= 0 && player.ammo > 0) {
+        bullets.push({ x: car.x + car.w/2 - 5, y: car.y, w: 10, h: 22 });
+        playSound('shoot', 0.6); shootCooldown = 60; player.ammo--;
+        updateHUD();
+    }
+});
+canvas.addEventListener('mousedown', (e) => {
+    if (gameState !== 'playing') return;
+    if (e.button === 0) car.targetX = x_road_l + images.road_l.width*0.65 - car.w/2;
+    if (e.button === 2) car.targetX = x_road_l + images.road_l.width*1.3 + images.road_r.width*0.35 - car.w/2;
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// --- منوها ---
+document.getElementById('tryAgainBtn').addEventListener('click', () => initGame());
+document.getElementById('saveScoreBtn').addEventListener('click', () => {
+    const name = document.getElementById('playerName').value.trim();
+    if (name.length > 0) {
+        let records = JSON.parse(localStorage.getItem('carGameRecords')) || [];
+        records.push({ name, score: player.score, level: player.level });
+        records.sort((a, b) => b.score - a.score); records = records.slice(0, 3);
+        localStorage.setItem('carGameRecords', JSON.stringify(records));
+        showLeaderboard();
+    }
+});
+document.getElementById('playAgainBtn').addEventListener('click', () => initGame());
+
+function showLeaderboard() {
+    document.getElementById('nameInputSection').style.display = 'none';
+    document.getElementById('leaderboardSection').style.display = 'block';
+    let records = JSON.parse(localStorage.getItem('carGameRecords')) || [];
+    let tbody = document.getElementById('recordsBody'); tbody.innerHTML = '';
+    records.forEach((r, index) => {
+        let tr = document.createElement('tr');
+        tr.innerHTML = `<td>${index+1}</td><td>${r.name}</td><td>${r.score}</td><td>${r.level}</td>`;
+        tbody.appendChild(tr);
+    });
+}
+
+window.addEventListener('resize', resizeCanvas);
+preloadAssets();
+</script>
+</body>
+</html>
